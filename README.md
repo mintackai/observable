@@ -2,16 +2,17 @@
 
 # observable -- see what's lagging your server
 
-This is a spiritual successor to [LagGoggles](https://www.curseforge.com/minecraft/mc-mods/laggoggles) for Minecraft 1.16 - 1.21 (and hopefully later versions). Licensed under MPLv2.
+This is a spiritual successor to [LagGoggles](https://www.curseforge.com/minecraft/mc-mods/laggoggles) for Minecraft 1.16 - 1.20 (and hopefully later versions). Licensed under MPLv2.
 
 See [CurseForge](https://www.curseforge.com/minecraft/mc-mods/observable) for download links.
 
 ## Minecraft 26.1.2 on NeoForge
 
+This port uses the published [Observable 4.4.1 release](https://github.com/tasgon/observable/releases/tag/4.4.1) as its source baseline.
 Build with JDK 25 using `./gradlew :forge:build` (`.\gradlew.bat :forge:build` on Windows).
-Install the main JAR from `forge/build/libs` alongside Architectury API 20.1.17
-on NeoForge 26.1.2.126 or a later 26.1.2 build. Install the mod on both the server and
-the client to use the profiler screen and overlay.
+Install `observable-4.4.1-26.1.2.jar` from `forge/build/libs` alongside Architectury API 20.1.17
+on NeoForge 26.1.2.126 or a later 26.1.2 build. Install Observable on both the server
+and the client to use the profiler screen and overlay.
 
 # Development notes
 

@@ -1,12 +1,12 @@
 package observable.net
 
 import dev.architectury.networking.NetworkManager
-import dev.architectury.networking.NetworkManager.Side
-import dev.architectury.networking.NetworkManager.canPlayerReceive
-import dev.architectury.networking.transformers.SplitPacketTransformer
 import dev.architectury.platform.Platform
 import dev.architectury.utils.Env
-import kotlinx.serialization.*
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromByteArray
+import kotlinx.serialization.encodeToByteArray
 import kotlinx.serialization.protobuf.ProtoBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -16,73 +16,122 @@ import net.minecraft.server.level.ServerPlayer
 import org.apache.logging.log4j.LogManager
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
+import java.util.UUID
 
 @OptIn(ExperimentalSerializationApi::class)
-class BetterChannel(val id: Identifier) {
+class BetterChannel(id: Identifier) {
     companion object {
         val LOGGER = LogManager.getLogger("ObservableNet")
+        const val PACKET_SIZE = 1_000_000
     }
 
     val s2cLocation: Identifier = id.withSuffix("-s2c")
     val c2sLocation: Identifier = id.withSuffix("-c2s")
 
-    class SerializedPayload(val className: String, val data: ByteArray, val location: Identifier) : CustomPacketPayload {
-        override fun type() = CustomPacketPayload.Type<CustomPacketPayload>(location)
-    }
-    inline fun <reified T> createPayload(data: T, side: Side) = SerializedPayload(T::class.java.name, ProtoBuf.encodeToByteArray(data), if (side == Side.S2C) s2cLocation else c2sLocation)
+    @Serializable
+    data class PartialPacketBegin(val id: Long, val type: String)
 
+    @Serializable
+    class PartialPacketData(val id: Long, val data: ByteArray, val index: Int, val length: Int)
+
+    private class PartialPacketAssembler(val type: String) {
+        val packets = mutableMapOf<Int, ByteArray>()
+
+        fun assemble(): ByteArray {
+            val bytes = ByteArrayOutputStream()
+            packets.toSortedMap().values.forEach { bytes.write(it) }
+            return bytes.toByteArray()
+        }
+    }
+
+    private val partialPackets = mutableMapOf<Long, PartialPacketAssembler>()
     val handlers = mutableMapOf<String, (ByteArray, NetworkManager.PacketContext) -> Unit>()
 
-    private fun codec(location: Identifier) =
-        object : StreamCodec<RegistryFriendlyByteBuf, SerializedPayload> {
-            override fun decode(buf: RegistryFriendlyByteBuf): SerializedPayload {
-                val name = buf.readUtf()
-                val bytes = GZIPInputStream(ByteArrayInputStream(buf.readByteArray())).buffered().use { it.readAllBytes() }
-                return SerializedPayload(name, bytes, location)
-            }
+    class SerializedPayload(val className: String, val data: ByteArray, val location: Identifier) : CustomPacketPayload {
+        override fun type() = CustomPacketPayload.Type<SerializedPayload>(location)
+    }
 
-            override fun encode(buf: RegistryFriendlyByteBuf, payload: SerializedPayload) {
-                buf.writeUtf(payload.className)
-                val bos = ByteArrayOutputStream()
-                GZIPOutputStream(bos).buffered().use { it.write(payload.data) }
-                buf.writeByteArray(bos.toByteArray())
-            }
-        }
+    private fun codec(location: Identifier) = object : StreamCodec<RegistryFriendlyByteBuf, SerializedPayload> {
+        override fun decode(buf: RegistryFriendlyByteBuf) = SerializedPayload(buf.readUtf(), buf.readByteArray(), location)
 
-    init {
-        val s2cCodec = codec(s2cLocation)
-        if (Platform.getEnvironment() == Env.SERVER) {
-            NetworkManager.registerS2CPayloadType(CustomPacketPayload.Type(s2cLocation), s2cCodec, listOf(SplitPacketTransformer()))
-        } else {
-            NetworkManager.registerReceiver(Side.S2C, CustomPacketPayload.Type(s2cLocation), s2cCodec, listOf(SplitPacketTransformer())) { value, ctx ->
-                ctx.queue { handlers[value.className]?.invoke(value.data, ctx) }
-            }
-        }
-        NetworkManager.registerReceiver(Side.C2S, CustomPacketPayload.Type(c2sLocation), codec(c2sLocation)) { value, ctx ->
-            ctx.queue { handlers[value.className]?.invoke(value.data, ctx) }
+        override fun encode(buf: RegistryFriendlyByteBuf, payload: SerializedPayload) {
+            buf.writeUtf(payload.className)
+            buf.writeByteArray(payload.data)
         }
     }
 
-    inline fun <reified T> register(
-        noinline consumer: (T, NetworkManager.PacketContext) -> Unit
-    ) {
-        handlers[T::class.java.name] = { buf, ctx -> consumer(ProtoBuf.decodeFromByteArray(buf), ctx) }
+    init {
+        val serverToClient = CustomPacketPayload.Type<SerializedPayload>(s2cLocation)
+        val clientToServer = CustomPacketPayload.Type<SerializedPayload>(c2sLocation)
+        if (Platform.getEnvironment() == Env.SERVER) {
+            NetworkManager.registerS2CPayloadType(serverToClient, codec(s2cLocation))
+        } else {
+            NetworkManager.registerReceiver(NetworkManager.Side.S2C, serverToClient, codec(s2cLocation), ::receive)
+        }
+        NetworkManager.registerReceiver(NetworkManager.Side.C2S, clientToServer, codec(c2sLocation), ::receive)
+
+        register { packet: PartialPacketBegin, _ ->
+            LOGGER.info("Received starting packet ${packet.id} for ${packet.type}")
+            if (handlers.containsKey(packet.type)) {
+                partialPackets[packet.id] = PartialPacketAssembler(packet.type)
+            } else {
+                LOGGER.warn("Could not find mapping for ${packet.type}")
+            }
+        }
+        register { packet: PartialPacketData, context ->
+            LOGGER.info("Received packet ${packet.index + 1}/${packet.length} of id ${packet.id}")
+            partialPackets[packet.id]?.let { assembler ->
+                assembler.packets[packet.index] = packet.data
+                if (packet.length == assembler.packets.size) {
+                    LOGGER.info("Assembling packet ${assembler.type}")
+                    handlers[assembler.type]?.invoke(assembler.assemble(), context)
+                    partialPackets.remove(packet.id)
+                }
+            }
+        }
+    }
+
+    private fun receive(payload: SerializedPayload, context: NetworkManager.PacketContext) {
+        handlers[payload.className]?.invoke(payload.data, context)
+    }
+
+    inline fun <reified T> register(noinline consumer: (T, NetworkManager.PacketContext) -> Unit) {
+        val name = T::class.java.name
+        LOGGER.info("Registering ${T::class.java}")
+        handlers[name] = handler@{ bytes, context ->
+            val packet = try {
+                ProtoBuf.decodeFromByteArray<T>(bytes)
+            } catch (e: Exception) {
+                LOGGER.warn("Error decoding packet!", e)
+                return@handler
+            }
+            consumer(packet, context)
+        }
         LOGGER.info("Registered ${T::class.java}")
     }
 
-    inline fun <reified T> sendToPlayers(players: Iterable<ServerPlayer>, msg: T) = NetworkManager.sendToPlayers(
-        players.filter {
-            canPlayerReceive(it, s2cLocation)
-        },
-        createPayload(msg, Side.S2C)
-    )
+    inline fun <reified T> sendToPlayers(players: Iterable<ServerPlayer>, msg: T) {
+        NetworkManager.sendToPlayers(
+            players.filter { NetworkManager.canPlayerReceive(it, s2cLocation) },
+            SerializedPayload(T::class.java.name, ProtoBuf.encodeToByteArray(msg), s2cLocation)
+        )
+    }
+
     inline fun <reified T> sendToPlayer(player: ServerPlayer, msg: T) = sendToPlayers(listOf(player), msg)
-    inline fun <reified T> sendToPlayersSplit(players: Iterable<ServerPlayer>, msg: T) = sendToPlayers(players, msg)
-    inline fun <reified T> sendToServer(msg: T) {
-        if (NetworkManager.canServerReceive(c2sLocation)) {
-            NetworkManager.sendToServer(createPayload(msg, Side.C2S))
+
+    inline fun <reified T> sendToPlayersSplit(players: Iterable<ServerPlayer>, msg: T) {
+        val bytes = ByteArrayInputStream(ProtoBuf.encodeToByteArray(msg))
+        val id = UUID.randomUUID().leastSignificantBits
+        sendToPlayers(players, PartialPacketBegin(id, T::class.java.name))
+        val length = bytes.available() / PACKET_SIZE + (bytes.available() % PACKET_SIZE).coerceAtMost(1)
+        var index = 0
+        while (bytes.available() > 0) {
+            val chunk = bytes.readNBytes(PACKET_SIZE)
+            sendToPlayers(players, PartialPacketData(id, chunk, index++, length))
         }
+    }
+
+    inline fun <reified T> sendToServer(msg: T) {
+        NetworkManager.sendToServer(SerializedPayload(T::class.java.name, ProtoBuf.encodeToByteArray(msg), c2sLocation))
     }
 }

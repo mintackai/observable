@@ -12,83 +12,121 @@ import net.minecraft.world.phys.Vec3
 import kotlin.math.roundToInt
 
 object Overlay {
-    data class EntityEntry(val id: Int, val rate: Double)
-    data class BlockEntry(val pos: BlockPos, val rate: Double)
-
-    var enabled = true
-    private var entities = emptyList<EntityEntry>()
-    private var blockMap = emptyMap<ChunkPos, List<BlockEntry>>()
-
-    @Synchronized
-    fun loadSync(level: ClientLevel? = Minecraft.getInstance().level) {
-        val data = ObservableClient.results
-        if (data == null || level == null) {
-            entities = emptyList()
-            blockMap = emptyMap()
-            return
+    data class Color(val r: Int, val g: Int, val b: Int, val a: Int) {
+        companion object {
+            fun fromNanos(rateNanos: Double): Color {
+                val micros = rateNanos / 1000.0
+                return Color(micros)
+            }
         }
 
-        val dimension = level.dimension().identifier()
-        fun rate(rate: Double, ticks: Int): Double =
-            if (ClientSettings.normalized && data.ticks > 0) rate * ticks / data.ticks else rate
+        constructor(
+            rateMicros: Double
+        ) : this(
+            (rateMicros / 100.0 * 255).roundToInt().coerceIn(0, 255),
+            ((100.0 - rateMicros) / 100.0 * 255).roundToInt().coerceIn(0, 255),
+            0,
+            (rateMicros / 100.0 * 255).roundToInt().coerceIn(20, 100)
+        )
 
-        entities = data.entities[dimension].orEmpty()
-            .mapNotNull { entry -> entry.entityId?.let { EntityEntry(it, rate(entry.rate, entry.ticks)) } }
-            .filter { it.rate >= ClientSettings.minRate }
-            .sortedByDescending { it.rate }
-
-        blockMap = data.blocks[dimension].orEmpty()
-            .map { BlockEntry(it.position, rate(it.rate, it.ticks)) }
-            .filter { it.rate >= ClientSettings.minRate }
-            .sortedByDescending { it.rate }
-            .groupBy { ChunkPos.containing(it.pos) }
+        val hex: Int =
+            with(this) {
+                val red = if (r > g) 0xFFu else (255 * r / g).toUInt()
+                val green = if (g > r) 0xFFu else (255 * g / r).toUInt()
+                (red shl 16) or (green shl 8) or (0xFFu shl 24)
+            }
+                .toInt()
     }
+
+    sealed class Entry(val color: Color) {
+        data class EntityEntry(val entityId: Int, val rate: Double) : Entry(Color.fromNanos(rate))
+        data class BlockEntry(val pos: BlockPos, val rate: Double) : Entry(Color.fromNanos(rate))
+    }
+
+    var enabled = true
+    private var entities = emptyList<Entry.EntityEntry>()
+    private var blocks = emptyList<Entry.BlockEntry>()
+    private var blockMap = emptyMap<ChunkPos, List<Entry.BlockEntry>>()
+
+    fun load(lvl: ClientLevel? = null) {
+        val data = ObservableClient.results ?: return
+        val level = lvl ?: Minecraft.getInstance().level ?: return
+        val levelLocation = level.dimension().identifier()
+        val ticks = data.ticks
+        val norm = ClientSettings.normalized
+        entities =
+            data.entities[levelLocation]
+                ?.map {
+                    Entry.EntityEntry(
+                        it.entityId!!,
+                        it.rate * (if (norm) it.ticks.toDouble() / ticks else 1.0)
+                    )
+                }
+                .orEmpty()
+                .filter { it.rate >= ClientSettings.minRate }
+                .sortedByDescending { it.rate }
+
+        blocks =
+            data.blocks[levelLocation]
+                ?.map {
+                    Entry.BlockEntry(
+                        it.position,
+                        it.rate * (if (norm) it.ticks.toDouble() / ticks else 1.0)
+                    )
+                }
+                ?.filter { it.rate >= ClientSettings.minRate }
+                .orEmpty()
+        blockMap = blocks.groupBy { ChunkPos.containing(it.pos) }
+    }
+
+    inline fun loadSync(lvl: ClientLevel? = null) = synchronized(this) { this.load(lvl) }
 
     @Synchronized
     fun render(level: ClientLevel, camera: Camera, partialTicks: Float) {
         if (!enabled || ObservableClient.results == null) return
 
-        val cameraPos = camera.position()
-        val cameraChunk = ChunkPos.containing(camera.blockPosition())
-        val maxBlockDist = ClientSettings.maxBlockDist.coerceAtLeast(0).toDouble()
-        val maxBlockDistSquared = maxBlockDist * maxBlockDist
-        val chunkRadius = (maxBlockDist / 16).toInt() + 1
+        for (entry in blocks) {
+            val (r, g, b, a) = entry.color
+            val color = (a shl 24) or (r shl 16) or (g shl 8) or b
+            Gizmos.cuboid(entry.pos, GizmoStyle.fill(color)).setAlwaysOnTop()
+        }
 
-        blockMap.asSequence()
-            .filter { (chunk, _) ->
-                chunk.x() in (cameraChunk.x() - chunkRadius)..(cameraChunk.x() + chunkRadius) &&
-                    chunk.z() in (cameraChunk.z() - chunkRadius)..(cameraChunk.z() + chunkRadius)
+        val player = Minecraft.getInstance().player ?: return
+        val chunk = ChunkPos.containing(player.blockPosition())
+        val radius = (ClientSettings.maxBlockDist / 16).coerceAtLeast(2)
+        val maxDist = ClientSettings.maxBlockDist * ClientSettings.maxBlockDist
+        for (x in (chunk.x() - radius)..(chunk.x() + radius)) {
+            for (z in (chunk.z() - radius)..(chunk.z() + radius)) {
+                blockMap[ChunkPos(x, z)]?.forEach { entry ->
+                    if (camera.blockPosition().distSqr(entry.pos) < maxDist) {
+                        drawLabel(timingLabel(entry.rate), Vec3.atCenterOf(entry.pos), -1)
+                    }
+                }
             }
-            .flatMap { it.value.asSequence() }
-            .filter { cameraPos.distanceToSqr(Vec3.atCenterOf(it.pos)) <= maxBlockDistSquared }
-            .take(ClientSettings.maxBlockCount.coerceAtLeast(0))
-            .forEach { entry ->
-                val color = heatColor(entry.rate, 75)
-                Gizmos.cuboid(entry.pos, GizmoStyle.fill(color)).setAlwaysOnTop()
-                Gizmos.billboardText(timingLabel(entry.rate), Vec3.atCenterOf(entry.pos), TextGizmo.Style.whiteAndCentered())
-                    .setAlwaysOnTop()
-            }
+        }
 
-        val maxEntityDist = ClientSettings.maxEntityDist.coerceAtLeast(0).toDouble()
-        val maxEntityDistSquared = maxEntityDist * maxEntityDist
-        entities.asSequence()
-            .mapNotNull { entry ->
-                val entity = level.getEntity(entry.id)?.takeUnless { it.isRemoved } ?: return@mapNotNull null
-                val position = entity.getPosition(partialTicks)
-                if (cameraPos.distanceToSqr(position) > maxEntityDistSquared) return@mapNotNull null
-                val label = timingLabel(entry.rate) + if (entity.isAlive) "" else " [X]"
-                Triple(label, position.add(0.0, entity.bbHeight + 0.33, 0.0), heatColor(entry.rate, 255))
+        val maxEntityIndex = ClientSettings.maxEntityCount - 1
+        for ((index, entry) in entities.withIndex()) {
+            if (index > maxEntityIndex) break
+            val entity = level.getEntity(entry.entityId) ?: continue
+            if (entity.isRemoved || (entity == player && entity.deltaMovement.lengthSqr() > 0.01)) continue
+
+            var position = entity.position()
+            if (camera.position().distanceTo(position) > ClientSettings.maxEntityDist) continue
+            var label = timingLabel(entry.rate)
+            if (entity.isAlive) {
+                val motion = entity.deltaMovement
+                position = position.add(Vec3(motion.x, motion.y.coerceAtLeast(0.0), motion.z).scale(partialTicks.toDouble()))
+            } else {
+                label += " [X]"
             }
-            .take(ClientSettings.maxEntityCount.coerceAtLeast(0))
-            .forEach { (label, position, color) ->
-                Gizmos.billboardText(label, position, TextGizmo.Style.forColorAndCentered(color)).setAlwaysOnTop()
-            }
+            drawLabel(label, position.add(0.0, entity.bbHeight + 0.33, 0.0), entry.color.hex)
+        }
     }
 
     private fun timingLabel(rate: Double) = "${(rate / 1000).roundToInt()} μs/t"
 
-    private fun heatColor(rate: Double, alpha: Int): Int {
-        val red = ((rate / 100_000.0).coerceIn(0.0, 1.0) * 255).roundToInt()
-        return (alpha shl 24) or (red shl 16) or ((255 - red) shl 8)
+    private fun drawLabel(label: String, position: Vec3, color: Int) {
+        Gizmos.billboardText(label, position, TextGizmo.Style.forColorAndCentered(color)).setAlwaysOnTop()
     }
 }

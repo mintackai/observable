@@ -43,7 +43,16 @@ class ClientSettingsGui : Screen(Component.translatable("screen.observable.clien
                 Component.literal("")
             )
         box.value = prop.get().toString()
-        box.setResponder { value -> value.toIntOrNull()?.let { prop.set(it) } }
+        var lastValue = box.value
+        box.setResponder { text ->
+            val value = text.toIntOrNull()
+            if (value == null) {
+                box.value = lastValue
+            } else {
+                lastValue = text
+                prop.set(value)
+            }
+        }
         addRenderableWidget(box)
     }
 
@@ -73,8 +82,6 @@ class ClientSettingsGui : Screen(Component.translatable("screen.observable.clien
     }
 
     override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
-
         for ((field, entry) in fields.zip(this.children())) {
             graphics.text(
                 this.font,
@@ -84,5 +91,6 @@ class ClientSettingsGui : Screen(Component.translatable("screen.observable.clien
                 0xFFFFFFFF.toInt()
             )
         }
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
     }
 }

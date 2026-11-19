@@ -5,9 +5,9 @@ import dev.architectury.event.events.client.ClientLifecycleEvent
 import dev.architectury.event.events.client.ClientPlayerEvent
 import dev.architectury.event.events.client.ClientTickEvent
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry
-import net.minecraft.client.Minecraft
 import net.minecraft.ChatFormatting
 import net.minecraft.client.KeyMapping
+import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.ClickEvent
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
@@ -62,7 +62,7 @@ object ObservableClient {
             if (t.link != null) {
                 val linkText = Component.literal(t.link).withStyle(ChatFormatting.UNDERLINE).withStyle {
                     val uri = runCatching { URI.create(t.link) }.getOrNull()
-                    if (uri != null && (uri.scheme == "http" || uri.scheme == "https")) {
+                    if (uri != null) {
                         it.withClickEvent(ClickEvent.OpenUrl(uri))
                     } else {
                         it

@@ -19,14 +19,14 @@ import org.apache.logging.log4j.Logger
 object Observable {
     const val MOD_ID = "observable"
 
-    val CHANNEL = BetterChannel(Identifier.fromNamespaceAndPath(MOD_ID, "channel"))
+    val CHANNEL = BetterChannel(Identifier.fromNamespaceAndPath(MOD_ID, "channel/observable"))
     val LOGGER: Logger = LogManager.getLogger("Observable")
     val PROFILER: Profiler by lazy { Profiler() }
 
     fun hasPermission(player: Player): Boolean {
         if (ServerSettings.allPlayersAllowed) return true
         if (ServerSettings.allowedPlayers.contains(player.gameProfile.id.toString())) return true
-        if (GameInstance.getServer()?.playerList?.isOp(NameAndId(player.gameProfile)) == true) return true
+        if (GameInstance.getServer()?.playerList?.isOp(NameAndId(player.gameProfile)) != false) return true
         return GameInstance.getServer()?.isSingleplayer ?: false
     }
 
