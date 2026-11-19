@@ -1,18 +1,17 @@
 package observable.fabric
 
 import net.fabricmc.api.ClientModInitializer
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
-import observable.Observable
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
+import observable.client.ObservableClient
 import observable.client.Overlay
 
 class Client : ClientModInitializer {
     override fun onInitializeClient() {
-        Observable.clientInit()
-
-        WorldRenderEvents.LAST.register {
-            val stack = it.matrixStack() ?: return@register
-            val projection = it.projectionMatrix()
-            Overlay.render(stack, it.tickCounter().getGameTimeDeltaPartialTick(true), projection)
+        ObservableClient.init()
+        LevelRenderEvents.END_EXTRACTION.register { context ->
+            context.levelRenderer().collectPerFrameGizmos().use {
+                Overlay.render(context.level(), context.camera(), context.deltaTracker().getGameTimeDeltaPartialTick(true))
+            }
         }
     }
 }

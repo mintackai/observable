@@ -27,6 +27,7 @@ inline val StackTraceElement.classMethod
     get() = "${this.className} + ${this.methodName}"
 
 class Profiler {
+    private val processingLock = Any()
     data class TimingData(
         var time: Long,
         var ticks: Int,
@@ -96,7 +97,7 @@ class Profiler {
         blockTimingsMap.clear()
         serverTraceMap = TraceMap()
         startTime = System.currentTimeMillis()
-        synchronized(Props.notProcessing) {
+        synchronized(processingLock) {
             notProcessing = false
             startingTicks = GameInstance.getServer()!!.tickCount
         }
@@ -165,7 +166,7 @@ class Profiler {
     fun stopRunning() {
         val diagnostics = getDiagnostics()
         val ticks: Int
-        synchronized(Props.notProcessing) {
+        synchronized(processingLock) {
             notProcessing = true
             ticks = GameInstance.getServer()!!.tickCount - startingTicks
         }

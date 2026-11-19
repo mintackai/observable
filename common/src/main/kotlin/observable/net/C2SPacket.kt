@@ -1,4 +1,4 @@
-@file:UseSerializers(BlockPosSerializer::class, ResourceLocationSerializer::class)
+@file:UseSerializers(BlockPosSerializer::class, IdentifierSerializer::class)
 
 package observable.net
 

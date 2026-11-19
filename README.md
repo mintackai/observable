@@ -6,6 +6,13 @@ This is a spiritual successor to [LagGoggles](https://www.curseforge.com/minecra
 
 See [CurseForge](https://www.curseforge.com/minecraft/mc-mods/observable) for download links.
 
+## Minecraft 26.1.2 on NeoForge
+
+Build with JDK 25 using `./gradlew :forge:build` (`.\gradlew.bat :forge:build` on Windows).
+Install the main JAR from `forge/build/libs` alongside Architectury API 20.1.17
+on NeoForge 26.1.2.126 or a later 26.1.2 build. Install the mod on both the server and
+the client to use the profiler screen and overlay.
+
 # Development notes
 
 Forge 1.18:

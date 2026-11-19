@@ -18,10 +18,11 @@
   },
   "mixins": ["observable.common.json"],
   "depends": {
-    "fabricloader": ">=0.12.0",
-    "fabric": "*",
-    "minecraft": ">=1.18.2",
-    "architectury": ">=4.1.32"
+    "fabricloader": ">=0.19.5",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "architectury": ">=${architectury_version}",
+    "java": ">=25"
   },
   "suggests": {
     "flamingo": "*"

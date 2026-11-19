@@ -29,7 +29,7 @@ object ProfileExporter {
         }
 
         val link = Component.literal(file.name).withStyle(ChatFormatting.UNDERLINE).withStyle {
-            it.withClickEvent(ClickEvent(ClickEvent.Action.OPEN_FILE, dir.absolutePath))
+            it.withClickEvent(ClickEvent.OpenFile(dir))
         }
 
         return link

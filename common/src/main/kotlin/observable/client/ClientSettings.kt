@@ -1,12 +1,11 @@
 package observable.client
 
-import dev.architectury.utils.GameInstance
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
-import java.lang.NumberFormatException
 import kotlin.reflect.KMutableProperty0
 
 object ClientSettings {
@@ -36,7 +35,7 @@ class ClientSettingsGui : Screen(Component.translatable("screen.observable.clien
     private fun entry(y: Int, prop: KMutableProperty0<Int>) {
         val box =
             EditBox(
-                GameInstance.getClient().font,
+                Minecraft.getInstance().font,
                 width * 3 / 4,
                 y,
                 40,
@@ -44,15 +43,7 @@ class ClientSettingsGui : Screen(Component.translatable("screen.observable.clien
                 Component.literal("")
             )
         box.value = prop.get().toString()
-        box.setFilter {
-            try {
-                Integer.parseInt(it)
-                true
-            } catch (e: NumberFormatException) {
-                false
-            }
-        }
-        box.setResponder { prop.set(Integer.parseInt(it)) }
+        box.setResponder { value -> value.toIntOrNull()?.let { prop.set(it) } }
         addRenderableWidget(box)
     }
 
@@ -81,16 +72,16 @@ class ClientSettingsGui : Screen(Component.translatable("screen.observable.clien
         )
     }
 
-    override fun render(graphics: GuiGraphics, i: Int, j: Int, f: Float) {
-        super.render(graphics, i, j, f)
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
 
         for ((field, entry) in fields.zip(this.children())) {
-            graphics.drawString(
+            graphics.text(
                 this.font,
                 field,
                 width / 4,
                 (entry as AbstractWidget).y,
-                0xFFFFFF
+                0xFFFFFFFF.toInt()
             )
         }
     }

@@ -11,6 +11,7 @@ import net.minecraft.commands.arguments.DimensionArgument
 import net.minecraft.commands.arguments.GameProfileArgument
 import net.minecraft.commands.arguments.coordinates.Vec3Argument
 import net.minecraft.network.chat.Component
+import net.minecraft.server.permissions.Permissions
 import net.minecraft.world.phys.Vec3
 import observable.Observable
 import observable.net.S2CPacket
@@ -19,7 +20,7 @@ import observable.util.MOD_URL_COMPONENT
 val OBSERVABLE_COMMAND
     get() =
         Commands.literal("observable")
-            .requires { it.hasPermission(4) }
+            .requires { it.permissions().hasPermission(Permissions.COMMANDS_OWNER) }
             .executes { ctx ->
                 ctx.source.sendSuccess({ Component.translatable("text.observable.cmd", MOD_URL_COMPONENT) }, false)
                 1
@@ -155,11 +156,6 @@ fun teleport(ctx: CommandContext<CommandSourceStack>, pos: Vec3) {
     val player = ctx.source.playerOrException
     val level = DimensionArgument.getDimension(ctx, "dim")
 
-    player.teleportTo(pos.x, pos.y, pos.z)
-    if (level == player.level()) {
-        player.connection.teleport(pos.x, pos.y, pos.z, 0F, 0F, setOf())
-    } else {
-        player.teleportTo(level, pos.x, pos.y, pos.z, 0F, 0F)
-    }
+    player.teleportTo(level, pos.x, pos.y, pos.z, emptySet(), 0F, 0F, true)
     Observable.LOGGER.info("Moved ${player.gameProfile.name} to (${pos.x}, ${pos.y}, ${pos.z}) in $level")
 }

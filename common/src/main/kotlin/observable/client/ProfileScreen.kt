@@ -1,9 +1,8 @@
 package observable.client
 
-import dev.architectury.utils.GameInstance
-import net.minecraft.Util
+import net.minecraft.util.Util
 import net.minecraft.client.Minecraft
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
@@ -105,7 +104,7 @@ class ProfileScreen : Screen(Component.translatable("screen.observable.profile")
                 startBtn.height,
                 Component.translatable("screen.observable.client_settings")
             ) {
-                GameInstance.getClient().setScreen(ClientSettingsGui())
+                Minecraft.getInstance().setScreen(ClientSettingsGui())
             }
 
         val samplerBtn =
@@ -136,7 +135,7 @@ class ProfileScreen : Screen(Component.translatable("screen.observable.profile")
                     Overlay.enabled
                 ) {
                     if (it) {
-                        synchronized(Overlay) { Overlay.load() }
+                        Overlay.loadSync()
                     }
                     Overlay.enabled = it
                 }
@@ -179,15 +178,15 @@ class ProfileScreen : Screen(Component.translatable("screen.observable.profile")
 
     override fun isPauseScreen() = false
 
-    override fun render(graphics: GuiGraphics, i: Int, j: Int, f: Float) {
-        super.render(graphics, i, j, f)
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
 
-        graphics.drawCenteredString(
+        graphics.centeredText(
             this.font,
             action.statusMsg,
             width / 2,
             startBtn!!.y - this.font.lineHeight - 4,
-            0xFFFFFF
+            0xFFFFFFFF.toInt()
         )
     }
 
