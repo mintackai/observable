@@ -4,7 +4,7 @@
   "package": "observable.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": ["LevelMixin", "ServerLevelMixin"],
-  "client": [],
+  "client": ["LevelRendererMixin"],
   "server": [],
   "injectors": {
     "defaultRequire": 1

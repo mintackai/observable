@@ -1,10 +1,11 @@
 package observable.client
 
+import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.core.BlockPos
-import net.minecraft.gizmos.GizmoStyle
 import net.minecraft.gizmos.Gizmos
 import net.minecraft.gizmos.TextGizmo
 import net.minecraft.world.level.ChunkPos
@@ -47,6 +48,7 @@ object Overlay {
     private var entities = emptyList<Entry.EntityEntry>()
     private var blocks = emptyList<Entry.BlockEntry>()
     private var blockMap = emptyMap<ChunkPos, List<Entry.BlockEntry>>()
+    private var blockMesh: BlockOverlayMesh? = null
 
     fun load(lvl: ClientLevel? = null) {
         val data = ObservableClient.results ?: return
@@ -77,19 +79,30 @@ object Overlay {
                 ?.filter { it.rate >= ClientSettings.minRate }
                 .orEmpty()
         blockMap = blocks.groupBy { ChunkPos.containing(it.pos) }
+        releaseBlockMesh()
     }
 
     inline fun loadSync(lvl: ClientLevel? = null) = synchronized(this) { this.load(lvl) }
 
     @Synchronized
+    fun releaseBlockMesh() {
+        blockMesh?.let { mesh -> Minecraft.getInstance().execute { mesh.close() } }
+        blockMesh = null
+    }
+
+    @Synchronized
+    fun hasBlockGeometry() = enabled && ObservableClient.results != null && blocks.isNotEmpty()
+
+    @Synchronized
+    fun renderBlocks(target: RenderTarget, camera: CameraRenderState) {
+        if (!hasBlockGeometry()) return
+        val mesh = blockMesh ?: BlockOverlayMesh.upload(blocks, camera.blockPos).also { blockMesh = it }
+        mesh.draw(target, camera.pos)
+    }
+
+    @Synchronized
     fun render(level: ClientLevel, camera: Camera, partialTicks: Float) {
         if (!enabled || ObservableClient.results == null) return
-
-        for (entry in blocks) {
-            val (r, g, b, a) = entry.color
-            val color = (a shl 24) or (r shl 16) or (g shl 8) or b
-            Gizmos.cuboid(entry.pos, GizmoStyle.fill(color)).setAlwaysOnTop()
-        }
 
         val player = Minecraft.getInstance().player ?: return
         val chunk = ChunkPos.containing(player.blockPosition())
@@ -127,6 +140,8 @@ object Overlay {
     private fun timingLabel(rate: Double) = "${(rate / 1000).roundToInt()} μs/t"
 
     private fun drawLabel(label: String, position: Vec3, color: Int) {
-        Gizmos.billboardText(label, position, TextGizmo.Style.forColorAndCentered(color)).setAlwaysOnTop()
+        // The gizmo renderer divides this by 16, so 0.4 preserves the original 0.025 world scale.
+        val style = TextGizmo.Style.forColorAndCentered(color).withScale(0.4F)
+        Gizmos.billboardText(label, position, style).setAlwaysOnTop()
     }
 }

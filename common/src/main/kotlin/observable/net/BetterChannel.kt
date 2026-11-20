@@ -132,6 +132,8 @@ class BetterChannel(id: Identifier) {
     }
 
     inline fun <reified T> sendToServer(msg: T) {
-        NetworkManager.sendToServer(SerializedPayload(T::class.java.name, ProtoBuf.encodeToByteArray(msg), c2sLocation))
+        if (NetworkManager.canServerReceive(c2sLocation)) {
+            NetworkManager.sendToServer(SerializedPayload(T::class.java.name, ProtoBuf.encodeToByteArray(msg), c2sLocation))
+        }
     }
 }

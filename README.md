@@ -10,7 +10,7 @@ See [CurseForge](https://www.curseforge.com/minecraft/mc-mods/observable) for do
 
 This port uses the published [Observable 4.4.1 release](https://github.com/tasgon/observable/releases/tag/4.4.1) as its source baseline.
 Build with JDK 25 using `./gradlew :forge:build` (`.\gradlew.bat :forge:build` on Windows).
-Install `observable-4.4.1-26.1.2.jar` from `forge/build/libs` alongside Architectury API 20.1.17
+Install `observable-4.4.1-26.1.2-r2.jar` from `forge/build/libs` alongside Architectury API 20.1.17
 on NeoForge 26.1.2.126 or a later 26.1.2 build. Install Observable on both the server
 and the client to use the profiler screen and overlay.
 

@@ -114,6 +114,7 @@ object ObservableClient {
 
         ClientPlayerEvent.CLIENT_PLAYER_QUIT.register {
             results = null
+            Overlay.releaseBlockMesh()
             profileScreen.action = ProfileScreen.Action.UNAVAILABLE
         }
     }
