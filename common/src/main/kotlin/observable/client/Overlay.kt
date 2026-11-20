@@ -49,6 +49,7 @@ object Overlay {
     private var blocks = emptyList<Entry.BlockEntry>()
     private var blockMap = emptyMap<ChunkPos, List<Entry.BlockEntry>>()
     private var blockMesh: BlockOverlayMesh? = null
+    private var meshCameraPosition: Vec3? = null
 
     fun load(lvl: ClientLevel? = null) {
         val data = ObservableClient.results ?: return
@@ -88,6 +89,7 @@ object Overlay {
     fun releaseBlockMesh() {
         blockMesh?.let { mesh -> Minecraft.getInstance().execute { mesh.close() } }
         blockMesh = null
+        meshCameraPosition = null
     }
 
     @Synchronized
@@ -96,8 +98,16 @@ object Overlay {
     @Synchronized
     fun renderBlocks(target: RenderTarget, camera: CameraRenderState) {
         if (!hasBlockGeometry()) return
-        val mesh = blockMesh ?: BlockOverlayMesh.upload(blocks, camera.blockPos).also { blockMesh = it }
-        mesh.draw(target, camera.pos)
+        val previousPosition = meshCameraPosition
+        if (previousPosition == null || previousPosition.distanceToSqr(camera.pos) > 1_000_000) {
+            releaseBlockMesh()
+            val nearbyBlocks = blocks.filter { it.pos.distSqr(camera.blockPos) < 1_440_000 }
+            if (nearbyBlocks.isNotEmpty()) {
+                blockMesh = BlockOverlayMesh.upload(nearbyBlocks, camera.blockPos)
+            }
+            meshCameraPosition = camera.pos
+        }
+        blockMesh?.draw(target, camera.pos)
     }
 
     @Synchronized
@@ -122,17 +132,11 @@ object Overlay {
         for ((index, entry) in entities.withIndex()) {
             if (index > maxEntityIndex) break
             val entity = level.getEntity(entry.entityId) ?: continue
-            if (entity.isRemoved || (entity == player && entity.deltaMovement.lengthSqr() > 0.01)) continue
+            if (entity.isRemoved) continue
 
-            var position = entity.position()
+            val position = entity.getPosition(partialTicks)
             if (camera.position().distanceTo(position) > ClientSettings.maxEntityDist) continue
-            var label = timingLabel(entry.rate)
-            if (entity.isAlive) {
-                val motion = entity.deltaMovement
-                position = position.add(Vec3(motion.x, motion.y.coerceAtLeast(0.0), motion.z).scale(partialTicks.toDouble()))
-            } else {
-                label += " [X]"
-            }
+            val label = timingLabel(entry.rate) + if (entity.isAlive) "" else " [X]"
             drawLabel(label, position.add(0.0, entity.bbHeight + 0.33, 0.0), entry.color.hex)
         }
     }

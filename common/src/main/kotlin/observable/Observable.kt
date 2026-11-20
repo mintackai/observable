@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger
 object Observable {
     const val MOD_ID = "observable"
 
-    val CHANNEL = BetterChannel(Identifier.fromNamespaceAndPath(MOD_ID, "channel/observable"))
+    val CHANNEL = BetterChannel(Identifier.fromNamespaceAndPath(MOD_ID, "channel"))
     val LOGGER: Logger = LogManager.getLogger("Observable")
     val PROFILER: Profiler by lazy { Profiler() }
 
