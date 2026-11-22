@@ -49,7 +49,9 @@ internal class BlockOverlayMesh private constructor(
             4, 5, 1, 0
         )
 
-        fun upload(blocks: List<Overlay.Entry.BlockEntry>, origin: BlockPos): BlockOverlayMesh {
+        fun upload(blocks: List<Overlay.Entry.BlockEntry>, cameraBlockPos: BlockPos): BlockOverlayMesh {
+            // Minecraft reuses the camera position, but the vertex offsets stay relative to this origin.
+            val origin = cameraBlockPos.immutable()
             ByteBufferBuilder(4096).use { builder ->
                 val vertices = BufferBuilder(builder, pipeline.vertexFormatMode, pipeline.vertexFormat)
                 for (entry in blocks) {
